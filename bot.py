@@ -3,15 +3,22 @@ from discord.ext import commands
 import aiosqlite
 import os
 
+# --------------------------
 # Intents
+# --------------------------
 intents = discord.Intents.default()
-intents.message_content = True  # Needed for reading messages
+intents.message_content = True  # Needed to read messages for commands
+
 bot = commands.Bot(command_prefix="/", intents=intents)
 
+# --------------------------
 # Database path
+# --------------------------
 DB_PATH = "decks.db"
 
+# --------------------------
 # Initialize database
+# --------------------------
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
@@ -25,13 +32,17 @@ async def init_db():
         """)
         await db.commit()
 
+# --------------------------
 # When bot is ready
+# --------------------------
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
     await init_db()
 
-# Deck command
+# --------------------------
+# Deck commands
+# --------------------------
 @bot.command()
 async def deck(ctx, action: str, *, args=None):
     if action.lower() == "submit":
@@ -55,6 +66,7 @@ async def deck(ctx, action: str, *, args=None):
             )
             await db.commit()
 
+        # Send an embed with the deck link
         embed = discord.Embed(title=name.strip(), description=f"[View Deck]({url.strip()})", color=0x1abc9c)
         await ctx.send(f"Deck submitted by **{user_name}**:", embed=embed)
 
@@ -90,5 +102,19 @@ async def deck(ctx, action: str, *, args=None):
     else:
         await ctx.send("Unknown action. Use `submit`, `list`, or `view`.")
 
-# Run bot using environment variable
+# --------------------------
+# Export database command
+# --------------------------
+@bot.command()
+@commands.is_owner()  # Optional: only you can run it
+async def exportdb(ctx):
+    """Sends the decks.db file as an attachment"""
+    try:
+        await ctx.send(file=discord.File(DB_PATH))
+    except Exception as e:
+        await ctx.send(f"Error sending database: {e}")
+
+# --------------------------
+# Run bot
+# --------------------------
 bot.run(os.environ["DISCORD_TOKEN"])
