@@ -1,17 +1,17 @@
 import discord
 from discord.ext import commands
 import aiosqlite
-import requests
 import os
 
+# Intents
 intents = discord.Intents.default()
-intents.message_content = True       # Required for reading messages
-intents.members = True               # Required if you want to track joins/leaves or user info
-
+intents.message_content = True  # Needed for reading messages
 bot = commands.Bot(command_prefix="/", intents=intents)
 
+# Database path
 DB_PATH = "decks.db"
 
+# Initialize database
 async def init_db():
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("""
@@ -20,28 +20,29 @@ async def init_db():
                 user_id INTEGER,
                 user_name TEXT,
                 deck_name TEXT,
-                deck_text TEXT
+                deck_url TEXT
             );
         """)
         await db.commit()
 
+# When bot is ready
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
     await init_db()
 
+# Deck command
 @bot.command()
 async def deck(ctx, action: str, *, args=None):
-    # /deck submit "My Deck" cards...
     if action.lower() == "submit":
         if not args:
-            await ctx.send("Usage: `/deck submit <deck name> | <deck text>`")
+            await ctx.send("Usage: `/deck submit <deck name> | <deck URL>`")
             return
 
         try:
-            name, text = args.split("|", 1)
+            name, url = args.split("|", 1)
         except ValueError:
-            await ctx.send("Please include a deck name and a deck list separated by `|`")
+            await ctx.send("Please include a deck name and a deck URL separated by `|`")
             return
 
         user_id = ctx.author.id
@@ -49,11 +50,13 @@ async def deck(ctx, action: str, *, args=None):
 
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
-                "INSERT INTO decks (user_id, user_name, deck_name, deck_text) VALUES (?, ?, ?, ?)",
-                (user_id, user_name, name.strip(), text.strip())
+                "INSERT INTO decks (user_id, user_name, deck_name, deck_url) VALUES (?, ?, ?, ?)",
+                (user_id, user_name, name.strip(), url.strip())
             )
             await db.commit()
-        await ctx.send(f"Deck **{name.strip()}** submitted by **{user_name}**!")
+
+        embed = discord.Embed(title=name.strip(), description=f"[View Deck]({url.strip()})", color=0x1abc9c)
+        await ctx.send(f"Deck submitted by **{user_name}**:", embed=embed)
 
     elif action.lower() == "list":
         async with aiosqlite.connect(DB_PATH) as db:
@@ -69,19 +72,23 @@ async def deck(ctx, action: str, *, args=None):
         if not args:
             await ctx.send("Usage: `/deck view <player name>`")
             return
+
         async with aiosqlite.connect(DB_PATH) as db:
             rows = await db.execute_fetchall(
-                "SELECT deck_name, deck_text FROM decks WHERE user_name LIKE ?",
+                "SELECT deck_name, deck_url FROM decks WHERE user_name LIKE ?",
                 (f"%{args}%",)
             )
+
         if not rows:
             await ctx.send("No deck found for that player.")
             return
 
-        name, text = rows[0]
-        await ctx.send(f"**{args} – {name}**\n{text}")
+        name, url = rows[0]
+        embed = discord.Embed(title=name, description=f"[View Deck]({url})", color=0x1abc9c)
+        await ctx.send(embed=embed)
 
     else:
-        await ctx.send("Unknown `<action>`. Use `submit`, `list`, or `view`.")
+        await ctx.send("Unknown action. Use `submit`, `list`, or `view`.")
 
+# Run bot using environment variable
 bot.run(os.environ["DISCORD_TOKEN"])
